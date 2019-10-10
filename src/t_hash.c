@@ -44,9 +44,9 @@ void hashTypeTryConversion(robj *o, robj **argv, int start, int end) {
 
     for (i = start; i <= end; i++) {
         if (sdsEncodedObject(argv[i]) &&
-            sdslen(argv[i]->ptr) > server.hash_max_ziplist_value)
+            sdslen(argv[i]->ptr) > server.hash_max_ziplist_value)   //如果key val字符串长度大于默认值64（可配置）则存储结构要转化为散列表hashtable
         {
-            hashTypeConvert(o, OBJ_ENCODING_HT);
+            hashTypeConvert(o, OBJ_ENCODING_HT);//转化为散列表hashtable
             break;
         }
     }
@@ -202,52 +202,52 @@ int hashTypeExists(robj *o, sds field) {
 int hashTypeSet(robj *o, sds field, sds value, int flags) {
     int update = 0;
 
-    if (o->encoding == OBJ_ENCODING_ZIPLIST) {
+    if (o->encoding == OBJ_ENCODING_ZIPLIST) {//如果存储编码为压缩列表则走压缩列表逻辑
         unsigned char *zl, *fptr, *vptr;
 
         zl = o->ptr;
-        fptr = ziplistIndex(zl, ZIPLIST_HEAD);
+        fptr = ziplistIndex(zl, ZIPLIST_HEAD);//寻找头元素 头元素不为null代表压缩列表有元素 可能需要头插入或中间插入
         if (fptr != NULL) {
-            fptr = ziplistFind(fptr, (unsigned char*)field, sdslen(field), 1);
-            if (fptr != NULL) {
+            fptr = ziplistFind(fptr, (unsigned char*)field, sdslen(field), 1);//根据field从压缩列表寻找元素
+            if (fptr != NULL) { //如果fptr !=null 代表field插入过
                 /* Grab pointer to the value (fptr points to the field) */
-                vptr = ziplistNext(zl, fptr);
+                vptr = ziplistNext(zl, fptr);   //寻找field的下一个元素 即是old value元素
                 serverAssert(vptr != NULL);
                 update = 1;
 
                 /* Delete value */
-                zl = ziplistDelete(zl, &vptr);
+                zl = ziplistDelete(zl, &vptr);//删除old value元素
 
                 /* Insert new value */
                 zl = ziplistInsert(zl, vptr, (unsigned char*)value,
-                        sdslen(value));
+                        sdslen(value)); //插入新元素
             }
         }
 
         if (!update) {
             /* Push new field/value pair onto the tail of the ziplist */
             zl = ziplistPush(zl, (unsigned char*)field, sdslen(field),
-                    ZIPLIST_TAIL);
+                    ZIPLIST_TAIL);//插入压缩列表 尾部插入
             zl = ziplistPush(zl, (unsigned char*)value, sdslen(value),
                     ZIPLIST_TAIL);
         }
         o->ptr = zl;
 
         /* Check if the ziplist needs to be converted to a hash table */
-        if (hashTypeLength(o) > server.hash_max_ziplist_entries)
+        if (hashTypeLength(o) > server.hash_max_ziplist_entries)    //如果hash元素个数大于默认值512（可配置）则转化为散列表hashtable
             hashTypeConvert(o, OBJ_ENCODING_HT);
-    } else if (o->encoding == OBJ_ENCODING_HT) {
-        dictEntry *de = dictFind(o->ptr,field);
-        if (de) {
-            sdsfree(dictGetVal(de));
+    } else if (o->encoding == OBJ_ENCODING_HT) {//如果是散列hash 则走hash存储逻辑
+        dictEntry *de = dictFind(o->ptr,field);//根据field寻找是否插入过
+        if (de) {//如果元素不为null则存在 走覆盖逻辑
+            sdsfree(dictGetVal(de));//清空原来的val
             if (flags & HASH_SET_TAKE_VALUE) {
                 dictGetVal(de) = value;
                 value = NULL;
             } else {
-                dictGetVal(de) = sdsdup(value);
+                dictGetVal(de) = sdsdup(value);//拷贝一个新的value并赋值
             }
             update = 1;
-        } else {
+        } else {//否则元素为null不存在 走插入逻辑
             sds f,v;
             if (flags & HASH_SET_TAKE_FIELD) {
                 f = field;
@@ -261,7 +261,7 @@ int hashTypeSet(robj *o, sds field, sds value, int flags) {
             } else {
                 v = sdsdup(value);
             }
-            dictAdd(o->ptr,f,v);
+            dictAdd(o->ptr,f,v);//插入
         }
     } else {
         serverPanic("Unknown hash encoding");
@@ -312,7 +312,7 @@ unsigned long hashTypeLength(const robj *o) {
     unsigned long length = ULONG_MAX;
 
     if (o->encoding == OBJ_ENCODING_ZIPLIST) {
-        length = ziplistLen(o->ptr) / 2;
+        length = ziplistLen(o->ptr) / 2;    //  因为存储1个hash类型key val 需要2个ziplistEntry 所以除以2
     } else if (o->encoding == OBJ_ENCODING_HT) {
         length = dictSize((const dict*)o->ptr);
     } else {
@@ -449,10 +449,10 @@ sds hashTypeCurrentObjectNewSds(hashTypeIterator *hi, int what) {
 }
 
 robj *hashTypeLookupWriteOrCreate(client *c, robj *key) {
-    robj *o = lookupKeyWrite(c->db,key);
+    robj *o = lookupKeyWrite(c->db,key);//根据key插在对应的val
     if (o == NULL) {
-        o = createHashObject();
-        dbAdd(c->db,key,o);
+        o = createHashObject();//创建hash对象
+        dbAdd(c->db,key,o);//插库
     } else {
         if (o->type != OBJ_HASH) {
             addReply(c,shared.wrongtypeerr);

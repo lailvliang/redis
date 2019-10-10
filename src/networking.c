@@ -1290,7 +1290,7 @@ int processMultibulkBuffer(client *c) {
         /* We know for sure there is a whole line since newline != NULL,
          * so go ahead and find out the multi bulk length. */
         serverAssertWithInfo(c,NULL,c->querybuf[c->qb_pos] == '*');
-        ok = string2ll(c->querybuf+1+c->qb_pos,newline-(c->querybuf+1+c->qb_pos),&ll);
+        ok = string2ll(c->querybuf+1+c->qb_pos,newline-(c->querybuf+1+c->qb_pos),&ll);//获取参数个数
         if (!ok || ll > 1024*1024) {
             addReplyError(c,"Protocol error: invalid multibulk length");
             setProtocolError("invalid mbulk count",c);
@@ -1309,10 +1309,10 @@ int processMultibulkBuffer(client *c) {
     }
 
     serverAssertWithInfo(c,NULL,c->multibulklen > 0);
-    while(c->multibulklen) {
+    while(c->multibulklen) {//每个参数是否解析完 0跳出循环
         /* Read bulk length if unknown */
-        if (c->bulklen == -1) {
-            newline = strchr(c->querybuf+c->qb_pos,'\r');
+        if (c->bulklen == -1) {//代表还存在解析的参数
+            newline = strchr(c->querybuf+c->qb_pos,'\r');//获取新行
             if (newline == NULL) {
                 if (sdslen(c->querybuf)-c->qb_pos > PROTO_INLINE_MAX_SIZE) {
                     addReplyError(c,
@@ -1324,10 +1324,10 @@ int processMultibulkBuffer(client *c) {
             }
 
             /* Buffer should also contain \n */
-            if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))
+            if (newline-(c->querybuf+c->qb_pos) > (ssize_t)(sdslen(c->querybuf)-c->qb_pos-2))//查看解析是否到结尾
                 break;
 
-            if (c->querybuf[c->qb_pos] != '$') {
+            if (c->querybuf[c->qb_pos] != '$') {//解析的参数头部不是$ 代表协议有问题 不是redis请求协议
                 addReplyErrorFormat(c,
                     "Protocol error: expected '$', got '%c'",
                     c->querybuf[c->qb_pos]);
@@ -1335,14 +1335,14 @@ int processMultibulkBuffer(client *c) {
                 return C_ERR;
             }
 
-            ok = string2ll(c->querybuf+c->qb_pos+1,newline-(c->querybuf+c->qb_pos+1),&ll);
+            ok = string2ll(c->querybuf+c->qb_pos+1,newline-(c->querybuf+c->qb_pos+1),&ll);//获取此次解析参数的字符串长度
             if (!ok || ll < 0 || ll > server.proto_max_bulk_len) {
                 addReplyError(c,"Protocol error: invalid bulk length");
                 setProtocolError("invalid bulk length",c);
                 return C_ERR;
             }
 
-            c->qb_pos = newline-c->querybuf+2;
+            c->qb_pos = newline-c->querybuf+2;//更新命令已解析的位置
             if (ll >= PROTO_MBULK_BIG_ARG) {
                 /* If we are going to read a large object from network
                  * try to make it likely that it will start at c->querybuf
@@ -1361,14 +1361,14 @@ int processMultibulkBuffer(client *c) {
                     c->querybuf = sdsMakeRoomFor(c->querybuf,ll+2);
                 }
             }
-            c->bulklen = ll;
+            c->bulklen = ll;//此次参数长度赋值
         }
 
         /* Read bulk argument */
-        if (sdslen(c->querybuf)-c->qb_pos < (size_t)(c->bulklen+2)) {
+        if (sdslen(c->querybuf)-c->qb_pos < (size_t)(c->bulklen+2)) {//参数长度解析完结束
             /* Not enough data (+2 == trailing \r\n) */
             break;
-        } else {
+        } else {//此次解析参数
             /* Optimization: if the buffer contains JUST our bulk element
              * instead of creating a new object by *copying* the sds we
              * just use the current sds string. */
@@ -1384,11 +1384,11 @@ int processMultibulkBuffer(client *c) {
                 sdsclear(c->querybuf);
             } else {
                 c->argv[c->argc++] =
-                    createStringObject(c->querybuf+c->qb_pos,c->bulklen);
-                c->qb_pos += c->bulklen+2;
+                    createStringObject(c->querybuf+c->qb_pos,c->bulklen);//截取此次解析参数的字符串并创建robj对象赋值到c->argv[c->argc++]
+                c->qb_pos += c->bulklen+2;//累加已解析的位置
             }
-            c->bulklen = -1;
-            c->multibulklen--;
+            c->bulklen = -1;//准备解析下一个参数
+            c->multibulklen--;//已解析参数个数-1
         }
     }
 
@@ -1407,7 +1407,7 @@ void processInputBuffer(client *c) {
     server.current_client = c;
 
     /* Keep processing while there is something in the input buffer */
-    while(c->qb_pos < sdslen(c->querybuf)) {
+    while(c->qb_pos < sdslen(c->querybuf)) {//qb_pos是读了多少数据 每次循环会累加 一次读不完数据需要持续读取数据
         /* Return if clients are paused. */
         if (!(c->flags & CLIENT_SLAVE) && clientsArePaused()) break;
 
@@ -1429,10 +1429,10 @@ void processInputBuffer(client *c) {
 
         /* Determine request type when unknown. */
         if (!c->reqtype) {
-            if (c->querybuf[c->qb_pos] == '*') {
+            if (c->querybuf[c->qb_pos] == '*') {//如果客户端发送的命令是*开头代表调用processMultibulkBuffer解析
                 c->reqtype = PROTO_REQ_MULTIBULK;
             } else {
-                c->reqtype = PROTO_REQ_INLINE;
+                c->reqtype = PROTO_REQ_INLINE;//否则调用processInlineBuffer内联解析
             }
         }
 
@@ -1460,7 +1460,7 @@ void processInputBuffer(client *c) {
                  * still be able to access the client argv and argc field.
                  * The client will be reset in unblockClientFromModule(). */
                 if (!(c->flags & CLIENT_BLOCKED) || c->btype != BLOCKED_MODULE)
-                    resetClient(c);
+                    resetClient(c);//执行成功 重置客户端
             }
             /* freeMemoryIfNeeded may flush slave output buffers. This may
              * result into a slave, that may be the active client, to be
@@ -1471,7 +1471,7 @@ void processInputBuffer(client *c) {
 
     /* Trim to pos */
     if (c->qb_pos) {
-        sdsrange(c->querybuf,c->qb_pos,-1);
+        sdsrange(c->querybuf,c->qb_pos,-1);//执行结束 清空已解析执行的querybuf
         c->qb_pos = 0;
     }
 
@@ -1523,9 +1523,9 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     qblen = sdslen(c->querybuf);
     if (c->querybuf_peak < qblen) c->querybuf_peak = qblen;
-    c->querybuf = sdsMakeRoomFor(c->querybuf, readlen);
-    nread = read(fd, c->querybuf+qblen, readlen);
-    if (nread == -1) {
+    c->querybuf = sdsMakeRoomFor(c->querybuf, readlen);//扩充querybuf空间
+    nread = read(fd, c->querybuf+qblen, readlen);//读取客户端传输的命令数据 返回读取内容长度
+    if (nread == -1) {//-1 代表读取异常
         if (errno == EAGAIN) {
             return;
         } else {
@@ -1533,7 +1533,7 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
             freeClient(c);
             return;
         }
-    } else if (nread == 0) {
+    } else if (nread == 0) {//0 客户端连接关闭
         serverLog(LL_VERBOSE, "Client closed connection");
         freeClient(c);
         return;

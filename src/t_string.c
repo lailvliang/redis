@@ -67,28 +67,28 @@ static int checkStringLength(client *c, long long size) {
 void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire, int unit, robj *ok_reply, robj *abort_reply) {
     long long milliseconds = 0; /* initialized to avoid any harmness warning */
 
-    if (expire) {
-        if (getLongLongFromObjectOrReply(c, expire, &milliseconds, NULL) != C_OK)
+    if (expire) {//是否有设置expire过期时间
+        if (getLongLongFromObjectOrReply(c, expire, &milliseconds, NULL) != C_OK)//expire对象类型转换成long long类型是否成功 必须保证跟在ex或px后面的参数是整数
             return;
-        if (milliseconds <= 0) {
+        if (milliseconds <= 0) { //必须是正整数
             addReplyErrorFormat(c,"invalid expire time in %s",c->cmd->name);
             return;
         }
-        if (unit == UNIT_SECONDS) milliseconds *= 1000;
+        if (unit == UNIT_SECONDS) milliseconds *= 1000;//如果是ex 是秒类型 自乘1000
     }
 
-    if ((flags & OBJ_SET_NX && lookupKeyWrite(c->db,key) != NULL) ||
-        (flags & OBJ_SET_XX && lookupKeyWrite(c->db,key) == NULL))
+    if ((flags & OBJ_SET_NX && lookupKeyWrite(c->db,key) != NULL) ||    //setnx 是否存在 存在返回
+        (flags & OBJ_SET_XX && lookupKeyWrite(c->db,key) == NULL))      //setxx 是否存在 不存在返回
     {
         addReply(c, abort_reply ? abort_reply : shared.nullbulk);
         return;
     }
-    setKey(c->db,key,val);
+    setKey(c->db,key,val);//往db插入元素
     server.dirty++;
-    if (expire) setExpire(c,c->db,key,mstime()+milliseconds);
-    notifyKeyspaceEvent(NOTIFY_STRING,"set",key,c->db->id);
+    if (expire) setExpire(c,c->db,key,mstime()+milliseconds);//是否有设置expire过期时间 有的话添加过期时间
+    notifyKeyspaceEvent(NOTIFY_STRING,"set",key,c->db->id);//如果设置了set监听的话 发送此次set消息
     if (expire) notifyKeyspaceEvent(NOTIFY_GENERIC,
-        "expire",key,c->db->id);
+        "expire",key,c->db->id);                            //如果设置了expire监听的话 发送此次expire消息
     addReply(c, ok_reply ? ok_reply : shared.ok);
 }
 
@@ -99,7 +99,7 @@ void setCommand(client *c) {
     int unit = UNIT_SECONDS;
     int flags = OBJ_SET_NO_FLAGS;
 
-    for (j = 3; j < c->argc; j++) {
+    for (j = 3; j < c->argc; j++) {//处理长度大于3的参数
         char *a = c->argv[j]->ptr;
         robj *next = (j == c->argc-1) ? NULL : c->argv[j+1];
 
@@ -342,26 +342,26 @@ void incrDecrCommand(client *c, long long incr) {
     long long value, oldvalue;
     robj *o, *new;
 
-    o = lookupKeyWrite(c->db,c->argv[1]);
+    o = lookupKeyWrite(c->db,c->argv[1]);//寻找key对应的val
     if (o != NULL && checkType(c,o,OBJ_STRING)) return;
-    if (getLongLongFromObjectOrReply(c,o,&value,NULL) != C_OK) return;
+    if (getLongLongFromObjectOrReply(c,o,&value,NULL) != C_OK) return;//如果val转long不成功返回 自增必须是整数
 
     oldvalue = value;
     if ((incr < 0 && oldvalue < 0 && incr < (LLONG_MIN-oldvalue)) ||
-        (incr > 0 && oldvalue > 0 && incr > (LLONG_MAX-oldvalue))) {
+        (incr > 0 && oldvalue > 0 && incr > (LLONG_MAX-oldvalue))) {    //是否越界long范围
         addReplyError(c,"increment or decrement would overflow");
         return;
     }
-    value += incr;
+    value += incr; //累加
 
     if (o && o->refcount == 1 && o->encoding == OBJ_ENCODING_INT &&
         (value < 0 || value >= OBJ_SHARED_INTEGERS) &&
-        value >= LONG_MIN && value <= LONG_MAX)
+        value >= LONG_MIN && value <= LONG_MAX)//不在共享范围内 不是共享对象 在long范围内
     {
         new = o;
-        o->ptr = (void*)((long)value);
+        o->ptr = (void*)((long)value);//long类型情况下 指针8字节 long8字节 指针等于值直接存储
     } else {
-        new = createStringObjectFromLongLongForValue(value);
+        new = createStringObjectFromLongLongForValue(value);//新建个long robj对象插入或覆盖
         if (o) {
             dbOverwrite(c->db,c->argv[1],new);
         } else {
@@ -377,7 +377,7 @@ void incrDecrCommand(client *c, long long incr) {
 }
 
 void incrCommand(client *c) {
-    incrDecrCommand(c,1);
+    incrDecrCommand(c,1);//自增加1
 }
 
 void decrCommand(client *c) {
@@ -388,7 +388,7 @@ void incrbyCommand(client *c) {
     long long incr;
 
     if (getLongLongFromObjectOrReply(c, c->argv[2], &incr, NULL) != C_OK) return;
-    incrDecrCommand(c,incr);
+    incrDecrCommand(c,incr);//加一定数量
 }
 
 void decrbyCommand(client *c) {

@@ -89,7 +89,7 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
     o->encoding = OBJ_ENCODING_EMBSTR;
     o->ptr = sh+1;
     o->refcount = 1;
-    if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
+    if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {//是否设置了lfu算法 是的话选择lfu算法 否则使用lru算法
         o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
     } else {
         o->lru = LRU_CLOCK();
@@ -117,7 +117,7 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
  * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. */
 #define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44
 robj *createStringObject(const char *ptr, size_t len) {
-    if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)
+    if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)//如果长度小于等于44 创建Embeddedsds对象 内存连续 否则创建rawsds对象 内存不连续
         return createEmbeddedStringObject(ptr,len);
     else
         return createRawStringObject(ptr,len);
@@ -240,9 +240,9 @@ robj *createIntsetObject(void) {
 }
 
 robj *createHashObject(void) {
-    unsigned char *zl = ziplistNew();
-    robj *o = createObject(OBJ_HASH, zl);
-    o->encoding = OBJ_ENCODING_ZIPLIST;
+    unsigned char *zl = ziplistNew();   //创界压缩列表
+    robj *o = createObject(OBJ_HASH, zl);   //封装压缩列表为robj对象
+    o->encoding = OBJ_ENCODING_ZIPLIST;     //存储编码为ziplist
     return o;
 }
 
@@ -441,20 +441,20 @@ robj *tryObjectEncoding(robj *o) {
      * Note that we are sure that a string larger than 20 chars is not
      * representable as a 32 nor 64 bit integer. */
     len = sdslen(s);
-    if (len <= 20 && string2l(s,len,&value)) {
+    if (len <= 20 && string2l(s,len,&value)) {//String强转long integer是否成功
         /* This object is encodable as a long. Try to use a shared object.
          * Note that we avoid using shared integers when maxmemory is used
          * because every object needs to have a private LRU field for the LRU
          * algorithm to work well. */
-        if ((server.maxmemory == 0 ||
-            !(server.maxmemory_policy & MAXMEMORY_FLAG_NO_SHARED_INTEGERS)) &&
+        if ((server.maxmemory == 0 ||//如果没有设置最大内存 允许使用共享对象
+            !(server.maxmemory_policy & MAXMEMORY_FLAG_NO_SHARED_INTEGERS)) &&//如果没有设置内存淘汰策略lfu lru 并且val在0～10000区间允许使用共享对象
             value >= 0 &&
             value < OBJ_SHARED_INTEGERS)
         {
             decrRefCount(o);
             incrRefCount(shared.integers[value]);
-            return shared.integers[value];
-        } else {
+            return shared.integers[value];//使用共享对象
+        } else {//否则使用OBJ_ENCODING_INT编码
             if (o->encoding == OBJ_ENCODING_RAW) sdsfree(o->ptr);
             o->encoding = OBJ_ENCODING_INT;
             o->ptr = (void*) value;
@@ -466,7 +466,7 @@ robj *tryObjectEncoding(robj *o) {
      * try the EMBSTR encoding which is more efficient.
      * In this representation the object and the SDS string are allocated
      * in the same chunk of memory to save space and cache misses. */
-    if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT) {
+    if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT) {//如果字符串长度小于44 用EMBSTR编码 连续分配内存 load robj对象时可以把ptr指向的内容一起load出 增加缓存命中率
         robj *emb;
 
         if (o->encoding == OBJ_ENCODING_EMBSTR) return o;

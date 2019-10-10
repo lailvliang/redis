@@ -187,41 +187,41 @@ int dictExpand(dict *d, unsigned long size)
  * work it does would be unbound and the function may block for a long time. */
 int dictRehash(dict *d, int n) {
     int empty_visits = n*10; /* Max number of empty buckets to visit. */
-    if (!dictIsRehashing(d)) return 0;
+    if (!dictIsRehashing(d)) return 0;//检查Rehash是否完成
 
-    while(n-- && d->ht[0].used != 0) {
+    while(n-- && d->ht[0].used != 0) { //根据传入的n 决定Rehash几个节点 或者 当该table元素为0时代表全部元素rehash完毕
         dictEntry *de, *nextde;
 
         /* Note that rehashidx can't overflow as we are sure there are more
          * elements because ht[0].used != 0 */
         assert(d->ht[0].size > (unsigned long)d->rehashidx);
-        while(d->ht[0].table[d->rehashidx] == NULL) {
+        while(d->ht[0].table[d->rehashidx] == NULL) {// 如果当前需rehash的节点为空 则跳过此节点
             d->rehashidx++;
-            if (--empty_visits == 0) return 1;
+            if (--empty_visits == 0) return 1; //如果当跳过的节点数等于empty_visits 则结束此次请求的rehash 服务端不能阻塞多久
         }
-        de = d->ht[0].table[d->rehashidx];
+        de = d->ht[0].table[d->rehashidx]; //获取当前rehash节点的头元素
         /* Move all the keys in this bucket from the old to the new hash HT */
-        while(de) {
+        while(de) { //根据de->next 一直遍历所有元素
             uint64_t h;
 
-            nextde = de->next;
+            nextde = de->next; //下一个元素
             /* Get the index in the new hash table */
-            h = dictHashKey(d, de->key) & d->ht[1].sizemask;
-            de->next = d->ht[1].table[h];
-            d->ht[1].table[h] = de;
-            d->ht[0].used--;
-            d->ht[1].used++;
-            de = nextde;
+            h = dictHashKey(d, de->key) & d->ht[1].sizemask;//从新计算hashtable1中位置index
+            de->next = d->ht[1].table[h];//头插入
+            d->ht[1].table[h] = de;//放到hashtable1中的table index中
+            d->ht[0].used--;//移除了一个元素 hashtable0总元素减1
+            d->ht[1].used++;//增加了一个元素 hashtable1总元素加1
+            de = nextde;    //处理下一个元素
         }
-        d->ht[0].table[d->rehashidx] = NULL;
-        d->rehashidx++;
+        d->ht[0].table[d->rehashidx] = NULL; //设置hashtable0的rehashidx节点为null代表处理完成
+        d->rehashidx++;//自增rehashidx 下次需处理的节点
     }
 
     /* Check if we already rehashed the whole table... */
-    if (d->ht[0].used == 0) {
+    if (d->ht[0].used == 0) {//当所有元素移除完毕 需把h1拷回到h0中并且设置rehash为-1代表没有进行rehash
         zfree(d->ht[0].table);
         d->ht[0] = d->ht[1];
-        _dictReset(&d->ht[1]);
+        _dictReset(&d->ht[1]);//h1已经拷贝到h0 重置h1
         d->rehashidx = -1;
         return 0;
     }
@@ -258,16 +258,16 @@ int dictRehashMilliseconds(dict *d, int ms) {
  * dictionary so that the hash table automatically migrates from H1 to H2
  * while it is actively used. */
 static void _dictRehashStep(dict *d) {
-    if (d->iterators == 0) dictRehash(d,1);
+    if (d->iterators == 0) dictRehash(d,1);//Rehash 1代表1次
 }
 
 /* Add an element to the target hash table */
 int dictAdd(dict *d, void *key, void *val)
 {
-    dictEntry *entry = dictAddRaw(d,key,NULL);
+    dictEntry *entry = dictAddRaw(d,key,NULL);//根据key插入 返回封装好的dictEntry元素
 
     if (!entry) return DICT_ERR;
-    dictSetVal(d, entry, val);
+    dictSetVal(d, entry, val);//设置dictEntry的val
     return DICT_OK;
 }
 
@@ -295,25 +295,25 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
     dictEntry *entry;
     dictht *ht;
 
-    if (dictIsRehashing(d)) _dictRehashStep(d);
+    if (dictIsRehashing(d)) _dictRehashStep(d);//是否在进行扩容rehash 是的话只rehash一个节点 rehashidx记录了此次需rehash的节点
 
     /* Get the index of the new element, or -1 if
      * the element already exists. */
-    if ((index = _dictKeyIndex(d, key, dictHashKey(d,key), existing)) == -1)
+    if ((index = _dictKeyIndex(d, key, dictHashKey(d,key), existing)) == -1)//根据key寻找数组index节点并且检查该key是否已经存在 -1代表已存在该key
         return NULL;
 
     /* Allocate the memory and store the new entry.
      * Insert the element in top, with the assumption that in a database
      * system it is more likely that recently added entries are accessed
      * more frequently. */
-    ht = dictIsRehashing(d) ? &d->ht[1] : &d->ht[0];
-    entry = zmalloc(sizeof(*entry));
+    ht = dictIsRehashing(d) ? &d->ht[1] : &d->ht[0];//如果在rehash状态 存储在hashtable1中
+    entry = zmalloc(sizeof(*entry));//创建存储元素
     entry->next = ht->table[index];
-    ht->table[index] = entry;
-    ht->used++;
+    ht->table[index] = entry;//头插入
+    ht->used++;//hashtable总元素加1
 
     /* Set the hash entry fields. */
-    dictSetKey(d, entry, key);
+    dictSetKey(d, entry, key);//设置存储元素的key
     return entry;
 }
 

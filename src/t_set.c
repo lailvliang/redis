@@ -40,9 +40,9 @@ void sunionDiffGenericCommand(client *c, robj **setkeys, int setnum,
  * an integer-encodable value, an intset will be returned. Otherwise a regular
  * hash table. */
 robj *setTypeCreate(sds value) {
-    if (isSdsRepresentableAsLongLong(value,NULL) == C_OK)
-        return createIntsetObject();
-    return createSetObject();
+    if (isSdsRepresentableAsLongLong(value,NULL) == C_OK)//如果value是整数用inset存储否则用hashtable存储
+        return createIntsetObject();//创建inset对象
+    return createSetObject();//创建hashtable对象
 }
 
 /* Add the specified value into a set.
@@ -51,28 +51,28 @@ robj *setTypeCreate(sds value) {
  * returned, otherwise the new element is added and 1 is returned. */
 int setTypeAdd(robj *subject, sds value) {
     long long llval;
-    if (subject->encoding == OBJ_ENCODING_HT) {
+    if (subject->encoding == OBJ_ENCODING_HT) {//如果编码结构是hashtable 用hashtable存储
         dict *ht = subject->ptr;
-        dictEntry *de = dictAddRaw(ht,value,NULL);
+        dictEntry *de = dictAddRaw(ht,value,NULL);//新增存储元素并返回新增的存储元素
         if (de) {
-            dictSetKey(ht,de,sdsdup(value));
-            dictSetVal(ht,de,NULL);
+            dictSetKey(ht,de,sdsdup(value));//存储元素的key作为set集合的val
+            dictSetVal(ht,de,NULL);//存储元素的val为null
             return 1;
         }
-    } else if (subject->encoding == OBJ_ENCODING_INTSET) {
-        if (isSdsRepresentableAsLongLong(value,&llval) == C_OK) {
+    } else if (subject->encoding == OBJ_ENCODING_INTSET) {//如果结构编码是inset 用inset存储 如果set集合的val是整数使用
+        if (isSdsRepresentableAsLongLong(value,&llval) == C_OK) {//如果value的类型转化longlong类型成功
             uint8_t success = 0;
-            subject->ptr = intsetAdd(subject->ptr,llval,&success);
+            subject->ptr = intsetAdd(subject->ptr,llval,&success);//插入inset
             if (success) {
                 /* Convert to regular set when the intset contains
                  * too many entries. */
-                if (intsetLen(subject->ptr) > server.set_max_intset_entries)
+                if (intsetLen(subject->ptr) > server.set_max_intset_entries)//如果inset长度大于默认值512 转化为hashtable存储
                     setTypeConvert(subject,OBJ_ENCODING_HT);
                 return 1;
             }
         } else {
             /* Failed to get integer from object, convert to regular set. */
-            setTypeConvert(subject,OBJ_ENCODING_HT);
+            setTypeConvert(subject,OBJ_ENCODING_HT);//转成integer失败用hashtable存储
 
             /* The set *was* an intset and this value is not integer
              * encodable, so dictAdd should always work. */
@@ -265,23 +265,23 @@ void saddCommand(client *c) {
     robj *set;
     int j, added = 0;
 
-    set = lookupKeyWrite(c->db,c->argv[1]);
-    if (set == NULL) {
-        set = setTypeCreate(c->argv[2]->ptr);
-        dbAdd(c->db,c->argv[1],set);
+    set = lookupKeyWrite(c->db,c->argv[1]);//是否存在此key对应的set对象
+    if (set == NULL) {//不存在则创建
+        set = setTypeCreate(c->argv[2]->ptr);//创建一个set对象
+        dbAdd(c->db,c->argv[1],set);//往dict添加key set组合的元素
     } else {
-        if (set->type != OBJ_SET) {
+        if (set->type != OBJ_SET) {//如果不是set类型 返回错误信息
             addReply(c,shared.wrongtypeerr);
             return;
         }
     }
 
-    for (j = 2; j < c->argc; j++) {
-        if (setTypeAdd(set,c->argv[j]->ptr)) added++;
+    for (j = 2; j < c->argc; j++) {//从第3个参数开始获取集合元素
+        if (setTypeAdd(set,c->argv[j]->ptr)) added++;//逐个获取参数元素存储到dict或intset结构中
     }
     if (added) {
         signalModifiedKey(c->db,c->argv[1]);
-        notifyKeyspaceEvent(NOTIFY_SET,"sadd",c->argv[1],c->db->id);
+        notifyKeyspaceEvent(NOTIFY_SET,"sadd",c->argv[1],c->db->id);//发送监听了sadd事件的客户端
     }
     server.dirty += added;
     addReplyLongLong(c,added);

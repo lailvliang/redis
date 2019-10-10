@@ -84,7 +84,7 @@ zskiplist *zslCreate(void) {
     zsl = zmalloc(sizeof(*zsl));
     zsl->level = 1;
     zsl->length = 0;
-    zsl->header = zslCreateNode(ZSKIPLIST_MAXLEVEL,0,NULL);
+    zsl->header = zslCreateNode(ZSKIPLIST_MAXLEVEL,0,NULL); //创建头节点 level层数64层高 头节点的ele元素为null sorce为0
     for (j = 0; j < ZSKIPLIST_MAXLEVEL; j++) {
         zsl->header->level[j].forward = NULL;
         zsl->header->level[j].span = 0;
@@ -136,25 +136,25 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
 
     serverAssert(!isnan(score));
     x = zsl->header;
-    for (i = zsl->level-1; i >= 0; i--) {
+    for (i = zsl->level-1; i >= 0; i--) {   //从跳跃表中目前存储的最高节点向低节点遍历
         /* store rank that is crossed to reach the insert position */
-        rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];
-        while (x->level[i].forward &&
-                (x->level[i].forward->score < score ||
+        rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];  //rank[i]
+        while (x->level[i].forward &&   //如果最高节点的前一个节点不为null
+                (x->level[i].forward->score < score ||  //并且前一个节点的score小于插入的score 需继续向前推进 直到找到score比要插入的score要大的节点为止
                     (x->level[i].forward->score == score &&
                     sdscmp(x->level[i].forward->ele,ele) < 0)))
         {
-            rank[i] += x->level[i].span;
-            x = x->level[i].forward;
+            rank[i] += x->level[i].span;    //向前推进 并累加步伐span
+            x = x->level[i].forward;        //当前节点为下一个节点
         }
-        update[i] = x;
+        update[i] = x;  //找到了需记录的节点 记录下来
     }
     /* we assume the element is not already inside, since we allow duplicated
      * scores, reinserting the same element should never happen since the
      * caller of zslInsert() should test in the hash table if the element is
      * already inside or not. */
-    level = zslRandomLevel();
-    if (level > zsl->level) {
+    level = zslRandomLevel();//随机生成此次插入的高度
+    if (level > zsl->level) {//如果生成插入的高度大于zsl原始的高度(update[]的最大索引i是zsl的高度) 则填充数据到update[] 填充数量为生成的高度减去原始高度level-zsl->level
         for (i = zsl->level; i < level; i++) {
             rank[i] = 0;
             update[i] = zsl->header;
@@ -1035,7 +1035,7 @@ unsigned char *zzlInsertAt(unsigned char *zl, unsigned char *eptr, sds ele, doub
     size_t offset;
 
     scorelen = d2string(scorebuf,sizeof(scorebuf),score);
-    if (eptr == NULL) {
+    if (eptr == NULL) { //eptr为null 尾部插入
         zl = ziplistPush(zl,(unsigned char*)ele,sdslen(ele),ZIPLIST_TAIL);
         zl = ziplistPush(zl,(unsigned char*)scorebuf,scorelen,ZIPLIST_TAIL);
     } else {
@@ -1054,21 +1054,21 @@ unsigned char *zzlInsertAt(unsigned char *zl, unsigned char *eptr, sds ele, doub
 /* Insert (element,score) pair in ziplist. This function assumes the element is
  * not yet present in the list. */
 unsigned char *zzlInsert(unsigned char *zl, sds ele, double score) {
-    unsigned char *eptr = ziplistIndex(zl,0), *sptr;
+    unsigned char *eptr = ziplistIndex(zl,0), *sptr;    //获取ziplist头元素
     double s;
 
     while (eptr != NULL) {
-        sptr = ziplistNext(zl,eptr);
+        sptr = ziplistNext(zl,eptr);//获取当前元素score元素
         serverAssert(sptr != NULL);
-        s = zzlGetScore(sptr);
+        s = zzlGetScore(sptr);//获取score值
 
-        if (s > score) {
+        if (s > score) {//如果score值大于此时插入的score 则在eptr处插入
             /* First element with score larger than score for element to be
              * inserted. This means we should take its spot in the list to
              * maintain ordering. */
             zl = zzlInsertAt(zl,eptr,ele,score);
             break;
-        } else if (s == score) {
+        } else if (s == score) {    //如果相等score相等 比较插入的ele和eptr的字符串内容和长度 eptr长度大于ele长度则可插入 先按score从小到大排 然后按字符串长度从小到大排
             /* Ensure lexicographical ordering for elements. */
             if (zzlCompareElements(eptr,(unsigned char*)ele,sdslen(ele)) > 0) {
                 zl = zzlInsertAt(zl,eptr,ele,score);
@@ -1077,7 +1077,7 @@ unsigned char *zzlInsert(unsigned char *zl, sds ele, double score) {
         }
 
         /* Move to next element. */
-        eptr = ziplistNext(zl,sptr);
+        eptr = ziplistNext(zl,sptr);//寻找下一个member
     }
 
     /* Push on tail of list when it was not yet inserted. */
@@ -1349,7 +1349,7 @@ int zsetAdd(robj *zobj, double score, sds ele, int *flags, double *newscore) {
             }
 
             /* Remove and re-insert when score changed. */
-            if (score != curscore) {
+            if (score != curscore) {    //如果member相等 score不等说明要更新score的值 先删除再新插入
                 zobj->ptr = zzlDelete(zobj->ptr,eptr);
                 zobj->ptr = zzlInsert(zobj->ptr,ele,score);
                 *flags |= ZADD_UPDATED;
@@ -1358,10 +1358,10 @@ int zsetAdd(robj *zobj, double score, sds ele, int *flags, double *newscore) {
         } else if (!xx) {
             /* Optimize: check if the element is too large or the list
              * becomes too long *before* executing zzlInsert. */
-            zobj->ptr = zzlInsert(zobj->ptr,ele,score);
-            if (zzlLength(zobj->ptr) > server.zset_max_ziplist_entries)
+            zobj->ptr = zzlInsert(zobj->ptr,ele,score); //如果member不存在 插入
+            if (zzlLength(zobj->ptr) > server.zset_max_ziplist_entries) //ziplist的元素个数大于默认值128 则转换为skiplist
                 zsetConvert(zobj,OBJ_ENCODING_SKIPLIST);
-            if (sdslen(ele) > server.zset_max_ziplist_value)
+            if (sdslen(ele) > server.zset_max_ziplist_value)//或者此次插入的member长度大于64 则转换为skiplist
                 zsetConvert(zobj,OBJ_ENCODING_SKIPLIST);
             if (newscore) *newscore = score;
             *flags |= ZADD_ADDED;
@@ -1594,20 +1594,20 @@ void zaddGenericCommand(client *c, int flags) {
      * either execute fully or nothing at all. */
     scores = zmalloc(sizeof(double)*elements);
     for (j = 0; j < elements; j++) {
-        if (getDoubleFromObjectOrReply(c,c->argv[scoreidx+j*2],&scores[j],NULL)
-            != C_OK) goto cleanup;
+        if (getDoubleFromObjectOrReply(c,c->argv[scoreidx+j*2],&scores[j],NULL) //每个sroce 强转Double类型赋值到scores
+            != C_OK) goto cleanup;  //失败跳到cleaup做清除工作退出
     }
 
     /* Lookup the key and create the sorted set if does not exist. */
-    zobj = lookupKeyWrite(c->db,key);
+    zobj = lookupKeyWrite(c->db,key);   //查看key是否插入过
     if (zobj == NULL) {
-        if (xx) goto reply_to_client; /* No key + XX option: nothing to do. */
-        if (server.zset_max_ziplist_entries == 0 ||
-            server.zset_max_ziplist_value < sdslen(c->argv[scoreidx+1]->ptr))
+        if (xx) goto reply_to_client; /* No key + XX option: nothing to do. */  //key没有插入过 跟xx选项要求冲突 退出 xx选项是更新已存在的元素
+        if (server.zset_max_ziplist_entries == 0 || //zset_max_ziplist_entries默认128 hash_max_ziplist_entries默认512
+            server.zset_max_ziplist_value < sdslen(c->argv[scoreidx+1]->ptr))   //zset_max_ziplist_value hash_max_ziplist_value默认64
         {
-            zobj = createZsetObject();
+            zobj = createZsetObject();//创建一个存储为跳跃表+字典的数据结构
         } else {
-            zobj = createZsetZiplistObject();
+            zobj = createZsetZiplistObject();//创建一个存储为压缩列表的数据结构
         }
         dbAdd(c->db,key,zobj);
     } else {

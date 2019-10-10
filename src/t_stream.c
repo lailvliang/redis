@@ -242,30 +242,30 @@ int streamAppendItem(stream *s, robj **argv, int64_t numfields, streamID *added_
      * the current node is full. */
     if (lp != NULL) {
         if (server.stream_node_max_bytes &&
-            lp_bytes > server.stream_node_max_bytes)
+            lp_bytes > server.stream_node_max_bytes)    //如果此节点listpack所占内存大于默认值4096 需创建新的节点存储
         {
             lp = NULL;
         } else if (server.stream_node_max_entries) {
             int64_t count = lpGetInteger(lpFirst(lp));
-            if (count > server.stream_node_max_entries) lp = NULL;
+            if (count > server.stream_node_max_entries) lp = NULL;  //如果此节点listpack消息个数大于默认值100 需创建新的节点存储
         }
     }
 
     int flags = STREAM_ITEM_FLAG_NONE;
     if (lp == NULL || lp_bytes > server.stream_node_max_bytes) {
         master_id = id;
-        streamEncodeID(rax_key,&id);
+        streamEncodeID(rax_key,&id);//intrev64反向编码存储
         /* Create the listpack having the master entry ID and fields. */
-        lp = lpNew();
-        lp = lpAppendInteger(lp,1); /* One item, the one we are adding. */
-        lp = lpAppendInteger(lp,0); /* Zero deleted so far. */
-        lp = lpAppendInteger(lp,numfields);
+        lp = lpNew();//创建一个listpack 7个字节 TotalBytes 4个字节 num ele 2个字节 end 1个字节 7 0 0xff
+        lp = lpAppendInteger(lp,1); /* One item, the one we are adding. */ //创建count一个元素 记录总消息个数 xadd一次代表1个消息 初始化默认1个
+        lp = lpAppendInteger(lp,0); /* Zero deleted so far. */  //创建deleted一个元素 记录已经删除消息的个数 初始化默认0个
+        lp = lpAppendInteger(lp,numfields); //创建numfields元素 记录第一次插入消息时字段总个数
         for (int64_t i = 0; i < numfields; i++) {
             sds field = argv[i*2]->ptr;
-            lp = lpAppend(lp,(unsigned char*)field,sdslen(field));
+            lp = lpAppend(lp,(unsigned char*)field,sdslen(field));//循环创建field元素 存储field
         }
-        lp = lpAppendInteger(lp,0); /* Master entry zero terminator. */
-        raxInsert(s->rax,(unsigned char*)&rax_key,sizeof(rax_key),lp,NULL);
+        lp = lpAppendInteger(lp,0); /* Master entry zero terminator. *///创建0元素 用于标识位
+        raxInsert(s->rax,(unsigned char*)&rax_key,sizeof(rax_key),lp,NULL);//插入rax树 streamID为key listpack为value
         /* The first entry we insert, has obviously the same fields of the
          * master entry. */
         flags |= STREAM_ITEM_FLAG_SAMEFIELDS;
@@ -274,20 +274,20 @@ int streamAppendItem(stream *s, robj **argv, int64_t numfields, streamID *added_
         memcpy(rax_key,ri.key,sizeof(rax_key));
 
         /* Read the master ID from the radix tree key. */
-        streamDecodeID(rax_key,&master_id);
-        unsigned char *lp_ele = lpFirst(lp);
+        streamDecodeID(rax_key,&master_id);//解码rax_key赋值到master_id  master_id是ri当前记录的listpack节点第一次插入的streamID
+        unsigned char *lp_ele = lpFirst(lp);//获取第一个元素 存储的是消息总个数
 
         /* Update count and skip the deleted fields. */
-        int64_t count = lpGetInteger(lp_ele);
-        lp = lpReplaceInteger(lp,&lp_ele,count+1);
-        lp_ele = lpNext(lp,lp_ele); /* seek deleted. */
-        lp_ele = lpNext(lp,lp_ele); /* seek master entry num fields. */
+        int64_t count = lpGetInteger(lp_ele);//获取此节点消息总个数
+        lp = lpReplaceInteger(lp,&lp_ele,count+1);//消息总个数+1
+        lp_ele = lpNext(lp,lp_ele); /* seek deleted. */ //跳过deleted元素 记录了删除消息个数
+        lp_ele = lpNext(lp,lp_ele); /* seek master entry num fields. */ //获取第3个元素master entry元素 记录了此节点第一次插入消息的字段个数
 
         /* Check if the entry we are adding, have the same fields
          * as the master entry. */
-        int64_t master_fields_count = lpGetInteger(lp_ele);
+        int64_t master_fields_count = lpGetInteger(lp_ele); //获取此listpack第一次插入时消息的字段个数
         lp_ele = lpNext(lp,lp_ele);
-        if (numfields == master_fields_count) {
+        if (numfields == master_fields_count) { //下面主要比较此次插入消息的字段与此节点第一次插入消息时的字段是否相同 相同的话flags设置成STREAM_ITEM_FLAG_SAMEFIELDS 代表后续操作不会去插入此次消息的字段
             int64_t i;
             for (i = 0; i < master_fields_count; i++) {
                 sds field = argv[i*2]->ptr;
@@ -327,16 +327,16 @@ int streamAppendItem(stream *s, robj **argv, int64_t numfields, streamID *added_
      * in reverse order: we can just start from the end of the listpack, read
      * the entry, and jump back N times to seek the "flags" field to read
      * the stream full entry. */
-    lp = lpAppendInteger(lp,flags);
-    lp = lpAppendInteger(lp,id.ms - master_id.ms);
-    lp = lpAppendInteger(lp,id.seq - master_id.seq);
-    if (!(flags & STREAM_ITEM_FLAG_SAMEFIELDS))
+    lp = lpAppendInteger(lp,flags);//插入此次消息的flags
+    lp = lpAppendInteger(lp,id.ms - master_id.ms);//插入此次消息的ms
+    lp = lpAppendInteger(lp,id.seq - master_id.seq);//插入此次消息的seq
+    if (!(flags & STREAM_ITEM_FLAG_SAMEFIELDS)) //如果flags设置了STREAM_ITEM_FLAG_SAMEFIELDS 代表要插入此次消息的字段 这里先插入字段个数
         lp = lpAppendInteger(lp,numfields);
     for (int64_t i = 0; i < numfields; i++) {
         sds field = argv[i*2]->ptr, value = argv[i*2+1]->ptr;
-        if (!(flags & STREAM_ITEM_FLAG_SAMEFIELDS))
+        if (!(flags & STREAM_ITEM_FLAG_SAMEFIELDS))//如果flags设置了STREAM_ITEM_FLAG_SAMEFIELDS 代表要插入此次消息的字段
             lp = lpAppend(lp,(unsigned char*)field,sdslen(field));
-        lp = lpAppend(lp,(unsigned char*)value,sdslen(value));
+        lp = lpAppend(lp,(unsigned char*)value,sdslen(value));  //插入value
     }
     /* Compute and store the lp-count field. */
     int64_t lp_count = numfields;
@@ -346,11 +346,11 @@ int streamAppendItem(stream *s, robj **argv, int64_t numfields, streamID *added_
          * the values, and an additional num-fileds field. */
         lp_count += numfields+1;
     }
-    lp = lpAppendInteger(lp,lp_count);
+    lp = lpAppendInteger(lp,lp_count);  //插入此次消息的所占元素数量(相应的field和value 只算一个) 3+n或者3+n+1
 
     /* Insert back into the tree in order to update the listpack pointer. */
     if (ri.data != lp)
-        raxInsert(s->rax,(unsigned char*)&rax_key,sizeof(rax_key),lp,NULL);
+        raxInsert(s->rax,(unsigned char*)&rax_key,sizeof(rax_key),lp,NULL);//更新rax树对应key的val值
     s->length++;
     s->last_id = id;
     if (added_id) *added_id = id;
@@ -906,7 +906,7 @@ size_t streamReplyWithRange(client *c, stream *s, streamID *start, streamID *end
      * from its own PEL. This ensures each consumer will always and only
      * see the history of messages delivered to it and not yet confirmed
      * as delivered. */
-    if (group && streamCompareID(start,&group->last_id) <= 0) {
+    if (group && streamCompareID(start,&group->last_id) <= 0) {//如果此次读取的消息id比消费组记录的最后读取消息id要小 则去未确认消息列表读取
         return streamReplyWithRangeFromConsumerPEL(c,s,start,end,count,
                                                    consumer);
     }
@@ -961,7 +961,7 @@ size_t streamReplyWithRange(client *c, stream *s, streamID *start, streamID *end
             /* Now we can check if the entry was already busy, and
              * in that case reassign the entry to the new consumer,
              * or update it if the consumer is the same as before. */
-            if (group_inserted == 0) {
+            if (group_inserted == 0) {//group_inserted==0 说明这次消费的未确认消息已经存在过了 下面做更新处理
                 streamFreeNACK(nack);
                 nack = raxFind(group->pel,buf,sizeof(buf));
                 serverAssert(nack != raxNotFound);
@@ -1479,7 +1479,7 @@ void xreadCommand(client *c) {
                  * synchronously in case the group top item delivered is smaller
                  * than what the stream has inside. */
                 streamID *last = &groups[i]->last_id;
-                if (s->length && (streamCompareID(&s->last_id, last) > 0)) {
+                if (s->length && (streamCompareID(&s->last_id, last) > 0)) {//如果s->last_id大于last 说明消息队列还有消息可以继续读 serve_synchronously为0则代表不用读了
                     serve_synchronously = 1;
                     *gt = *last;
                 }
@@ -1499,7 +1499,7 @@ void xreadCommand(client *c) {
              * so start from the next ID, since we want only messages with
              * IDs greater than start. */
             streamID start = *gt;
-            start.seq++; /* uint64_t can't overflow in this context. */
+            start.seq++; /* uint64_t can't overflow in this context. */ //读一次消息 对应的消息id seq自增一次
 
             /* Emit the two elements sub-array consisting of the name
              * of the stream and the data we extracted from it. */
@@ -1613,7 +1613,7 @@ streamCG *streamCreateCG(stream *s, char *name, size_t namelen, streamID *id) {
     cg->pel = raxNew();
     cg->consumers = raxNew();
     cg->last_id = *id;
-    raxInsert(s->cgroups,(unsigned char*)name,namelen,cg,NULL);
+    raxInsert(s->cgroups,(unsigned char*)name,namelen,cg,NULL);//插入到stream的消费者rax树 key为name val为cg
     return cg;
 }
 
@@ -1768,7 +1768,7 @@ NULL
             s = o->ptr;
         }
 
-        streamCG *cg = streamCreateCG(s,grpname,sdslen(grpname),&id);
+        streamCG *cg = streamCreateCG(s,grpname,sdslen(grpname),&id);//创建一个消费组
         if (cg) {
             addReply(c,shared.ok);
             server.dirty++;

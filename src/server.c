@@ -2549,18 +2549,18 @@ int processCommand(client *c) {
 
     /* Now lookup the command and check ASAP about trivial error conditions
      * such as wrong arity, bad command name and so forth. */
-    c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr);
-    if (!c->cmd) {
+    c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr);//从redisCommandTable里查找命令对应的函数
+    if (!c->cmd) {//该命令对应函数是否存在
         flagTransaction(c);
         sds args = sdsempty();
         int i;
         for (i=1; i < c->argc && sdslen(args) < 128; i++)
             args = sdscatprintf(args, "`%.*s`, ", 128-(int)sdslen(args), (char*)c->argv[i]->ptr);
-        addReplyErrorFormat(c,"unknown command `%s`, with args beginning with: %s",
+        addReplyErrorFormat(c,"unknown command `%s`, with args beginning with: %s",//未发现命令
             (char*)c->argv[0]->ptr, args);
         sdsfree(args);
         return C_OK;
-    } else if ((c->cmd->arity > 0 && c->cmd->arity != c->argc) ||
+    } else if ((c->cmd->arity > 0 && c->cmd->arity != c->argc) || //命令参数个数必须跟redisCommandTable设置的一样
                (c->argc < -c->cmd->arity)) {
         flagTransaction(c);
         addReplyErrorFormat(c,"wrong number of arguments for '%s' command",
@@ -2569,7 +2569,7 @@ int processCommand(client *c) {
     }
 
     /* Check if the user is authenticated */
-    if (server.requirepass && !c->authenticated && c->cmd->proc != authCommand)
+    if (server.requirepass && !c->authenticated && c->cmd->proc != authCommand)//文件是否设置密码&&是否已经认证&&是否调用authCommand杉树
     {
         flagTransaction(c);
         addReply(c,shared.noautherr);
@@ -2580,7 +2580,7 @@ int processCommand(client *c) {
      * However we don't perform the redirection if:
      * 1) The sender of this command is our master.
      * 2) The command has no key arguments. */
-    if (server.cluster_enabled &&
+    if (server.cluster_enabled &&  //是否启用集群 集群校验
         !(c->flags & CLIENT_MASTER) &&
         !(c->flags & CLIENT_LUA &&
           server.lua_caller->flags & CLIENT_MASTER) &&
@@ -2612,15 +2612,15 @@ int processCommand(client *c) {
      * the event loop since there is a busy Lua script running in timeout
      * condition, to avoid mixing the propagation of scripts with the propagation
      * of DELs due to eviction. */
-    if (server.maxmemory && !server.lua_timedout) {
-        int out_of_memory = freeMemoryIfNeeded() == C_ERR;
+    if (server.maxmemory && !server.lua_timedout) {//是否设置最大内存
+        int out_of_memory = freeMemoryIfNeeded() == C_ERR;//尝试清除无用内存
         /* freeMemoryIfNeeded may flush slave output buffers. This may result
          * into a slave, that may be the active client, to be freed. */
         if (server.current_client == NULL) return C_ERR;
 
         /* It was impossible to free enough memory, and the command the client
          * is trying to execute is denied during OOM conditions? Error. */
-        if ((c->cmd->flags & CMD_DENYOOM) && out_of_memory) {
+        if ((c->cmd->flags & CMD_DENYOOM) && out_of_memory) {//如果已设置&&该命令会增加内存&&释放内存失败 则拒绝该命令
             flagTransaction(c);
             addReply(c, shared.oomerr);
             return C_OK;
@@ -2628,7 +2628,7 @@ int processCommand(client *c) {
     }
 
     /* Don't accept write commands if there are problems persisting on disk
-     * and if this is a master instance. */
+     * and if this is a master instance. 如果磁盘上存在问题并且这是主实例，则不接受写命令*/
     int deny_write_type = writeCommandsDeniedByDiskError();
     if (deny_write_type != DISK_ERROR_TYPE_NONE &&
         server.masterhost == NULL &&
@@ -2647,7 +2647,7 @@ int processCommand(client *c) {
     }
 
     /* Don't accept write commands if there are not enough good slaves and
-     * user configured the min-slaves-to-write option. */
+     * user configured the min-slaves-to-write option. 如果没有足够好的slaves并且用户配置了min-slaves-to-write选项，则不接受写命令*/
     if (server.masterhost == NULL &&
         server.repl_min_slaves_to_write &&
         server.repl_min_slaves_max_lag &&
@@ -2660,7 +2660,7 @@ int processCommand(client *c) {
     }
 
     /* Don't accept write commands if this is a read only slave. But
-     * accept write commands if this is our master. */
+     * accept write commands if this is our master. 如果这是一个只读slave，则不接受写命令。 但如果这是master，请接受写命令*/
     if (server.masterhost && server.repl_slave_ro &&
         !(c->flags & CLIENT_MASTER) &&
         c->cmd->flags & CMD_WRITE)
@@ -2699,7 +2699,7 @@ int processCommand(client *c) {
         return C_OK;
     }
 
-    /* Lua script too slow? Only allow a limited number of commands. */
+    /* Lua script too slow? Only allow a limited number of commands. lua脚本太慢 只允许几个比较特殊的命令 其余拒绝*/
     if (server.lua_timedout &&
           c->cmd->proc != authCommand &&
           c->cmd->proc != replconfCommand &&
@@ -4131,7 +4131,7 @@ int main(int argc, char **argv) {
             exit(1);
         }
         resetServerSaveParams();
-        loadServerConfig(configfile,options);
+        loadServerConfig(configfile,options);//初始化指定路径的配置文件
         sdsfree(options);
     }
 
@@ -4153,7 +4153,7 @@ int main(int argc, char **argv) {
     server.supervised = redisIsSupervised(server.supervised_mode);
     int background = server.daemonize && !server.supervised;
     if (background) daemonize();
-
+    //上面只是初始化redis服务的配置参数之类 initServer才是初始化redis服务的核心
     initServer();
     if (background || server.pidfile) createPidFile();
     redisSetProcTitle(argv[0]);

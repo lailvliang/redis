@@ -57,15 +57,15 @@ robj *lookupKey(redisDb *db, robj *key, int flags) {
 
         /* Update the access time for the ageing algorithm.
          * Don't do it if we have a saving child, as this will trigger
-         * a copy on write madness. */
+         * a copy on write madness. */ //没有rdb和aof线程允许并且flag不是LOOKUP_NOTOUCH则根据内存淘汰策略进行修改
         if (server.rdb_child_pid == -1 &&
             server.aof_child_pid == -1 &&
             !(flags & LOOKUP_NOTOUCH))
         {
-            if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
-                updateLFU(val);
+            if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {//内存淘汰策略是否是lfu
+                updateLFU(val);//更新最新访问时间和访问次数
             } else {
-                val->lru = LRU_CLOCK();
+                val->lru = LRU_CLOCK();//更新最新访问时间
             }
         }
         return val;
@@ -144,8 +144,8 @@ robj *lookupKeyRead(redisDb *db, robj *key) {
  * Returns the linked value object if the key exists or NULL if the key
  * does not exist in the specified DB. */
 robj *lookupKeyWrite(redisDb *db, robj *key) {
-    expireIfNeeded(db,key);
-    return lookupKey(db,key,LOOKUP_NONE);
+    expireIfNeeded(db,key);//检查key是否过期 是的话移除该key对应元素
+    return lookupKey(db,key,LOOKUP_NONE);//查找key是否存在 是的话返回其val 否则返回null
 }
 
 robj *lookupKeyReadOrReply(client *c, robj *key, robj *reply) {
@@ -165,12 +165,12 @@ robj *lookupKeyWriteOrReply(client *c, robj *key, robj *reply) {
  *
  * The program is aborted if the key already exists. */
 void dbAdd(redisDb *db, robj *key, robj *val) {
-    sds copy = sdsdup(key->ptr);
-    int retval = dictAdd(db->dict, copy, val);
+    sds copy = sdsdup(key->ptr);//根据key拷贝一个sds对象
+    int retval = dictAdd(db->dict, copy, val);//插入key val
 
     serverAssertWithInfo(NULL,key,retval == DICT_OK);
-    if (val->type == OBJ_LIST ||
-        val->type == OBJ_ZSET)
+    if (val->type == OBJ_LIST || //如果val的基本类型是list
+        val->type == OBJ_ZSET)      //如果val的基本类型是zset
         signalKeyAsReady(db, key);
     if (server.cluster_enabled) slotToKeyAdd(key);
 }
@@ -181,22 +181,22 @@ void dbAdd(redisDb *db, robj *key, robj *val) {
  *
  * The program is aborted if the key was not already present. */
 void dbOverwrite(redisDb *db, robj *key, robj *val) {
-    dictEntry *de = dictFind(db->dict,key->ptr);
+    dictEntry *de = dictFind(db->dict,key->ptr);//根据key从hashtable中寻找dictEntry元素
 
     serverAssertWithInfo(NULL,key,de != NULL);
     dictEntry auxentry = *de;
-    robj *old = dictGetVal(de);
-    if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
-        val->lru = old->lru;
+    robj *old = dictGetVal(de);//获取dictEntry的val
+    if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {//是否设置了lfu内存淘汰策略
+        val->lru = old->lru;        //是的话必须接着记录下去 因为含有访问次数
     }
-    dictSetVal(db->dict, de, val);
+    dictSetVal(db->dict, de, val);//更新dictEntry的val
 
     if (server.lazyfree_lazy_server_del) {
         freeObjAsync(old);
         dictSetVal(db->dict, &auxentry, NULL);
     }
 
-    dictFreeVal(db->dict, &auxentry);
+    dictFreeVal(db->dict, &auxentry);//释放旧val的内存
 }
 
 /* High level Set operation. This function can be used in order to set
@@ -208,13 +208,13 @@ void dbOverwrite(redisDb *db, robj *key, robj *val) {
  *
  * All the new keys in the database should be craeted via this interface. */
 void setKey(redisDb *db, robj *key, robj *val) {
-    if (lookupKeyWrite(db,key) == NULL) {
-        dbAdd(db,key,val);
+    if (lookupKeyWrite(db,key) == NULL) {//查询key是否已存在
+        dbAdd(db,key,val);//db新增一个元素
     } else {
-        dbOverwrite(db,key,val);
+        dbOverwrite(db,key,val);//覆盖掉key对应的val
     }
-    incrRefCount(val);
-    removeExpire(db,key);
+    incrRefCount(val);//自增val的引用计数
+    removeExpire(db,key);//移除key的Expire过期时间 所以覆盖更新的话 会移除掉原有的过期时间
     signalModifiedKey(db,key);
 }
 
@@ -1071,10 +1071,10 @@ void setExpire(client *c, redisDb *db, robj *key, long long when) {
     dictEntry *kde, *de;
 
     /* Reuse the sds from the main dict in the expire dict */
-    kde = dictFind(db->dict,key->ptr);
+    kde = dictFind(db->dict,key->ptr);//根据key从dict中查找dictEntry元素
     serverAssertWithInfo(NULL,key,kde != NULL);
-    de = dictAddOrFind(db->expires,dictGetKey(kde));
-    dictSetSignedIntegerVal(de,when);
+    de = dictAddOrFind(db->expires,dictGetKey(kde));//设置了过期时间的话会在expires也插入一个根据该key封装的元素
+    dictSetSignedIntegerVal(de,when);//更新过期时间的值
 
     int writable_slave = server.masterhost && server.repl_slave_ro == 0;
     if (c && writable_slave && !(c->flags & CLIENT_MASTER))

@@ -138,7 +138,7 @@ static int dictAdd(dict *ht, void *key, void *val) {
 
     /* Get the index of the new element, or -1 if
      * the element already exists. */
-    if ((index = _dictKeyIndex(ht, key)) == -1)
+    if ((index = _dictKeyIndex(ht, key)) == -1)//计算key在数组的位置index  -1代表该key已经存在
         return DICT_ERR;
 
     /* Allocates the memory and stores key */
@@ -322,7 +322,7 @@ static int _dictKeyIndex(dict *ht, const void *key) {
     dictEntry *he;
 
     /* Expand the hashtable if needed */
-    if (_dictExpandIfNeeded(ht) == DICT_ERR)
+    if (_dictExpandIfNeeded(ht) == DICT_ERR) //是否需要扩容
         return -1;
     /* Compute the key hash value */
     h = dictHashKey(ht, key) & ht->sizemask;

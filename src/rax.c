@@ -849,7 +849,7 @@ int raxGenericInsert(rax *rax, unsigned char *s, size_t len, void *data, void **
         /* If this node is going to have a single child, and there
          * are other characters, so that that would result in a chain
          * of single-childed nodes, turn it into a compressed node. */
-        if (h->size == 0 && len-i > 1) {
+        if (h->size == 0 && len-i > 1) {    //如果h->size ==0 代表首次创建key
             debugf("Inserting compressed node\n");
             size_t comprsize = len-i;
             if (comprsize > RAX_NODE_MAX_SIZE)

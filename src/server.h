@@ -211,7 +211,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define CMD_NOSCRIPT (1<<6)         /* "s" flag */
 #define CMD_RANDOM (1<<7)           /* "R" flag */
 #define CMD_SORT_FOR_SCRIPT (1<<8)  /* "S" flag */
-#define CMD_LOADING (1<<9)          /* "l" flag */
+#define  CMD_LOADING (1<<9)          /* "l" flag */
 #define CMD_STALE (1<<10)           /* "t" flag */
 #define CMD_SKIP_MONITOR (1<<11)    /* "M" flag */
 #define CMD_ASKING (1<<12)          /* "k" flag */
@@ -722,8 +722,8 @@ typedef struct client {
     robj **argv;            /* Arguments of current command. */
     struct redisCommand *cmd, *lastcmd;  /* Last command executed. */
     int reqtype;            /* Request protocol type: PROTO_REQ_* */
-    int multibulklen;       /* Number of multi bulk arguments left to read. */
-    long bulklen;           /* Length of bulk argument in multi bulk request. */
+    int multibulklen;       /* Number of multi bulk arguments left to read. */ //命令参数个数
+    long bulklen;           /* Length of bulk argument in multi bulk request. */  //每个参数长度
     list *reply;            /* List of reply objects to send to the client. */
     unsigned long long reply_bytes; /* Tot bytes of objects in reply list. */
     size_t sentlen;         /* Amount of bytes already sent in the current
@@ -1561,7 +1561,7 @@ int compareStringObjects(robj *a, robj *b);
 int collateStringObjects(robj *a, robj *b);
 int equalStringObjects(robj *a, robj *b);
 unsigned long long estimateObjectIdleTime(robj *o);
-#define sdsEncodedObject(objptr) (objptr->encoding == OBJ_ENCODING_RAW || objptr->encoding == OBJ_ENCODING_EMBSTR)
+#define  sdsEncodedObject(objptr) (objptr->encoding == OBJ_ENCODING_RAW || objptr->encoding == OBJ_ENCODING_EMBSTR)
 
 /* Synchronous I/O with timeout */
 ssize_t syncWrite(int fd, char *ptr, ssize_t size, long long timeout);

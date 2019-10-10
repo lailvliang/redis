@@ -99,7 +99,7 @@ typedef struct raxNode {
     uint32_t iskey:1;     /* Does this node contain a key? */
     uint32_t isnull:1;    /* Associated value is NULL (don't store it). */
     uint32_t iscompr:1;   /* Node is compressed. */
-    uint32_t size:29;     /* Number of children, or compressed string len. */
+    uint32_t size:29;     /* Number of children, or compressed string len. */ //压缩节点的话是字符串长度 非压缩节点是节点个数
     /* Data layout is as follows:
      *
      * If node is not compressed we have 'size' bytes, one for each children
@@ -131,9 +131,9 @@ typedef struct raxNode {
 } raxNode;
 
 typedef struct rax {
-    raxNode *head;
-    uint64_t numele;
-    uint64_t numnodes;
+    raxNode *head;  //头节点
+    uint64_t numele;    //rax树key的个数
+    uint64_t numnodes;  //raxnode节点个数
 } rax;
 
 /* Stack data structure used by raxLowWalk() in order to, optionally, return

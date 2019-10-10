@@ -14,10 +14,10 @@ typedef struct streamID {
 } streamID;
 
 typedef struct stream {
-    rax *rax;               /* The radix tree holding the stream. */
-    uint64_t length;        /* Number of elements inside this stream. */
-    streamID last_id;       /* Zero if there are yet no items. */
-    rax *cgroups;           /* Consumer groups dictionary: name -> streamCG */
+    rax *rax;               /* The radix tree holding the stream. */    //这是当前消息组的生产者消息树 key为streamID消息id val为listpack消息
+    uint64_t length;        /* Number of elements inside this stream. */    //当前消息组消息个数
+    streamID last_id;       /* Zero if there are yet no items. */   //当前消息组stream最后插入的消息id
+    rax *cgroups;           /* Consumer groups dictionary: name -> streamCG */  //这是当前消息组的消费者群组树 key为群组名称 val为streamCG streamCG主要记录消费者未确认消息pel 该群组所有消费者consumers last_id是当前消费到哪里的消息id
 } stream;
 
 /* We define an iterator to iterate stream items in an abstract way, without
@@ -52,7 +52,7 @@ typedef struct streamCG {
     streamID last_id;       /* Last delivered (not acknowledged) ID for this
                                group. Consumers that will just ask for more
                                messages will served with IDs > than this. */
-    rax *pel;               /* Pending entries list. This is a radix tree that
+    rax *pel;               /* Pending entries list. This is a radix tree that      //未确认消息 key是消息id val是streamNACK
                                has every message delivered to consumers (without
                                the NOACK option) that was yet not acknowledged
                                as processed. The key of the radix tree is the
